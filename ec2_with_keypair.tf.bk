@@ -1,0 +1,16 @@
+resource "aws_key_pair" "helloworld" {
+  key_name   = "helloworldkeys"
+  public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDf4PVgTd9WkOE9xoVv+muIkUXerTQRXKWZmcdDlTsHMm9kcDCuggkVXlT1mWHlTBTBh2c4YE6RrIVJVdHOj/sLaw0kj4WftblVerRA5LaNsC++Qlr5dd5UIsNXLl7y8hGoXGuEWd5JP7dNC1xv5pf8/hUszQOrUPTMokH2Eju/3wPaNo8ioY3Qx7WXXs8Xw5G530oSRxman6/f/p2i9Jrl8UM8zW9+TTPo8LxAnR2BRSXLf1AGqvFq4MxbKAnmnbduHum2zIU6LzU6wi8TNzYYzNV6m0ECDVnY9zQbmmSYoxOHs8F8Znrc0BnkWyh8yQR8/zZuPz/T6deR4wf/Gnoj ram@DESKTOP-N4M175V"
+
+}
+
+resource "aws_instance" "web1" {
+  ami           = "ami-05a5f6298acdb05b6"
+  instance_type = "t2.micro"
+  key_name = "helloworldkeys"
+  depends_on = [aws_key_pair.helloworld]
+
+  tags = {
+    Name = "HelloWorld"
+  }
+}

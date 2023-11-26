@@ -1,0 +1,176 @@
+resource "aws_vpc" "helloworldvpc" {
+  cidr_block       = "10.0.0.0/16"
+  instance_tenancy = "default"
+
+  tags = {
+    Name = "HelloWorld-VPC"
+  }
+}
+
+resource "aws_subnet" "helloworldpublic-subnet" {
+  vpc_id     = aws_vpc.helloworldvpc.id
+  cidr_block = "10.0.1.0/24"
+  map_public_ip_on_launch = "true"
+
+  tags = {
+    Name = "HelloWorldPub-Subnet"
+  }
+}
+
+resource "aws_subnet" "helloworldprivate-subnet" {
+  vpc_id     = aws_vpc.helloworldvpc.id
+  cidr_block = "10.0.2.0/24"
+  availability_zone = "us-east-1b"
+  map_public_ip_on_launch = "false"
+
+  tags = {
+    Name = "HelloWorldPriv-Subnet"
+  }
+}
+
+resource "aws_internet_gateway" "helloworldigw" {
+  vpc_id = aws_vpc.helloworldvpc.id
+
+  tags = {
+    Name = "HelloWorld-IGW"
+  }
+}
+
+#Routing Table for the Custom VPC
+resource "aws_route_table" "helloworld-public-rt" {
+  vpc_id = aws_vpc.helloworldvpc.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.helloworldigw.id
+  }
+
+  tags = {
+    Name = "helloworld-public-rt"
+  }
+}
+
+resource "aws_route_table_association" "helloworldpub-asso" {
+  subnet_id      = aws_subnet.helloworldpublic-subnet.id
+  route_table_id = aws_route_table.helloworld-public-rt.id
+}
+#Define External IP 
+resource "aws_eip" "helloworld-nat" {
+  domain = "vpc"
+}
+resource "aws_nat_gateway" "helloworld-nat-gw" {
+  allocation_id = aws_eip.helloworld-nat.id
+  subnet_id     = aws_subnet.helloworldpublic-subnet.id
+  depends_on    = [aws_internet_gateway.helloworldigw]
+}
+
+resource "aws_route_table" "helloworld-private-rt" {
+  vpc_id = aws_vpc.helloworldvpc.id
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.helloworld-nat-gw.id
+  }
+
+  tags = {
+    Name = "helloworld-private-rt"
+  }
+}
+
+# route associations private
+resource "aws_route_table_association" "helloworldpriv-asso" {
+  subnet_id      = aws_subnet.helloworldprivate-subnet.id
+  route_table_id = aws_route_table.helloworld-private-rt.id
+}
+
+#To Create SG which allows port 22 from external to the Instance
+
+resource "aws_security_group" "helloworld_sg" {
+   name        = "helloworld_sg"
+   description = "Allow SSH traffic"
+   vpc_id      = aws_vpc.helloworldvpc.id
+
+  ingress {
+     description      = "Allow SSH"
+     from_port        = 22
+     to_port          = 22
+     protocol         = "tcp"
+     cidr_blocks      = [aws_vpc.helloworldvpc.cidr_block, "0.0.0.0/0"]
+   }
+
+   egress {
+     from_port        = 0
+     to_port          = 0
+     protocol         = "-1"
+     cidr_blocks      = ["0.0.0.0/0"]
+   }
+
+   tags = {
+     Name = "allow_ssh"
+   }
+ }
+
+ #To create Security group for DB Server to accept incoming traffic only from WEB Server
+
+resource "aws_security_group" "helloworld_sg_db" {
+   name        = "helloworld_sg_db"
+   description = "Allow SSH traffic from web server"
+   vpc_id      = aws_vpc.helloworldvpc.id
+
+  ingress {
+     description      = "Allow SSH"
+     from_port        = 22
+     to_port          = 22
+     protocol         = "tcp"
+     security_groups = [aws_security_group.helloworld_sg.id]
+     #cidr_blocks      = [aws_security_group.labhelloworld_sg.id]
+   }
+
+   egress {
+     from_port        = 0
+     to_port          = 0
+     protocol         = "-1"
+     cidr_blocks      = ["0.0.0.0/0"]
+   }
+
+   tags = {
+     Name = "allow_ssh"
+   }
+ }
+
+ resource "aws_key_pair" "helloworld" {
+  key_name   = "helloworldkeys"
+  public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDf4PVgTd9WkOE9xoVv+muIkUXerTQRXKWZmcdDlTsHMm9kcDCuggkVXlT1mWHlTBTBh2c4YE6RrIVJVdHOj/sLaw0kj4WftblVerRA5LaNsC++Qlr5dd5UIsNXLl7y8hGoXGuEWd5JP7dNC1xv5pf8/hUszQOrUPTMokH2Eju/3wPaNo8ioY3Qx7WXXs8Xw5G530oSRxman6/f/p2i9Jrl8UM8zW9+TTPo8LxAnR2BRSXLf1AGqvFq4MxbKAnmnbduHum2zIU6LzU6wi8TNzYYzNV6m0ECDVnY9zQbmmSYoxOHs8F8Znrc0BnkWyh8yQR8/zZuPz/T6deR4wf/Gnoj ram@DESKTOP-N4M175V"
+
+}
+
+ # Create EC2 Server ( for Web )
+resource "aws_instance" "helloworld_Web_Server" {
+   ami = "ami-0fc5d935ebf8bc3bc"
+   instance_type = "t2.micro"
+   key_name = "helloworldkeys"
+   depends_on = [aws_key_pair.helloworld]
+   subnet_id = aws_subnet.helloworldpublic-subnet.id
+   vpc_security_group_ids = [aws_security_group.helloworld_sg.id]
+   associate_public_ip_address = true
+   
+   
+   tags = {
+     Name = "helloworld_Web_Server"
+   }
+ }
+
+# Create DB Server
+
+resource "aws_instance" "helloworldDB_Server" {
+   ami = "ami-0fc5d935ebf8bc3bc"
+   instance_type = "t2.micro"
+   key_name = "helloworldkeys"
+   depends_on = [aws_key_pair.helloworld]
+   subnet_id = aws_subnet.helloworldprivate-subnet.id
+   vpc_security_group_ids = [aws_security_group.helloworld_sg_db.id]
+   associate_public_ip_address = false
+   
+   
+   tags = {
+     Name = "helloworld_DB_Server"
+   }
+ }
